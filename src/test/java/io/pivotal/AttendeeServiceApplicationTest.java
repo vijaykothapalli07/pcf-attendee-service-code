@@ -1,109 +1,71 @@
 package io.pivotal;
 
-import com.jayway.jsonpath.DocumentContext;
-import com.jayway.jsonpath.JsonPath;
+import io.pivotal.enablement.attendee.model.Attendee;
+import io.restassured.RestAssured;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.test.SpringApplicationConfiguration;
-import org.springframework.boot.test.WebIntegrationTest;
-import org.springframework.http.*;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.boot.context.embedded.LocalServerPort;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.junit4.SpringRunner;
 
-import java.util.List;
+import static io.restassured.RestAssured.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.boot.test.context.SpringBootTest.WebEnvironment.RANDOM_PORT;
 
-import static io.pivotal.support.AttendeeJSONBuilder.attendeeJSONBuilder;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.IsEqual.equalTo;
-
-@RunWith(SpringJUnit4ClassRunner.class)
-@SpringApplicationConfiguration(classes = AttendeeServiceApplication.class)
-@WebIntegrationTest("server.port:0")
+@RunWith(SpringRunner.class)
+@SpringBootTest(webEnvironment = RANDOM_PORT)
 public class AttendeeServiceApplicationTest {
-    private static Logger logger = LoggerFactory.getLogger(AttendeeServiceApplicationTest.class);
 
-    private RestTemplate restTemplate = new RestTemplate();
+  @Autowired
+  private TestRestTemplate restTemplate;
 
-    @Autowired
-    private JdbcTemplate jdbcTemplate;
+  @LocalServerPort
+  private int port;
 
-    @Value("${local.server.port}")
-    private int port;
+  @Before
+  public void setup() {
 
-    private String url;
+    RestAssured.port = port;
 
-    @Before
-    public void setup() {
-        jdbcTemplate.execute("create table if not exists attendees (" +
-                "id bigint " +
-                ", first_name varchar(255)" +
-                ", last_name varchar(255)" +
-                ", address varchar(255)" +
-                ", city varchar(255)" +
-                ", state varchar(255)" +
-                ", zip_code varchar(255)" +
-                ", phone_number varchar(255)" +
-                ", email_address varchar(255)" +
-                ");");
+    Attendee attendee = Attendee.builder()
+        .firstName("Bob")
+        .lastName("Builder")
+        .address("1234 Fake St")
+        .city("Detroit")
+        .state("Michigan")
+        .zipCode("80202")
+        .phoneNumber("555-7890")
+        .emailAddress("bob@example.com")
+        .build();
 
-        url = "http://localhost:" + port + "/attendees";
+    ResponseEntity<String> responseEntity = restTemplate.postForEntity("/attendees", attendee, null);
 
-        String attendeeJSON = attendeeJSONBuilder()
-                .firstName("Bob")
-                .lastName("Builder")
-                .address("1234 Fake St")
-                .city("Detroit")
-                .state("Michigan")
-                .zipCode("80202")
-                .phoneNumber("555-7890")
-                .emailAddress("bob@example.com")
-                .build();
+    assertThat(responseEntity.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+  }
 
-        ResponseEntity<String> responseEntity = postJSON(attendeeJSON, url);
-        if (responseEntity.getStatusCode() != HttpStatus.CREATED) {
-            throw new RuntimeException("Unable to create attendee");
-        }
-    }
+  @Test
+  public void serviceReturnsCollectionOfAttendees() throws Exception {
+    when()
+        .get("/attendees")
+      .then()
+        .statusCode(200)
+        .body("_embedded.attendees", hasSize(1))
+        .body("_embedded.attendees[0].firstName", equalTo("Bob"))
+        .body("_embedded.attendees[0].lastName", equalTo("Builder"))
+        .body("_embedded.attendees[0].address", equalTo("1234 Fake St"))
+        .body("_embedded.attendees[0].city", equalTo("Detroit"))
+        .body("_embedded.attendees[0].state", equalTo("Michigan"))
+        .body("_embedded.attendees[0].zipCode", equalTo("80202"))
+        .body("_embedded.attendees[0].phoneNumber", equalTo("555-7890"))
+        .body("_embedded.attendees[0].emailAddress", equalTo("bob@example.com"));
+  }
 
-    @Test
-    public void serviceReturnsCollectionOfAttendees() throws Exception {
-        String attendeeListJSON = restTemplate.getForObject(url, String.class);
-        DocumentContext parsedResponse = JsonPath.parse(attendeeListJSON);
-
-        List<Object> attendees = parsedResponse.read("$._embedded.attendees");
-        assertThat(attendees.size(), equalTo(1));
-
-        String firstName = parsedResponse.read("$._embedded.attendees[0].firstName");
-        String lastName = parsedResponse.read("$._embedded.attendees[0].lastName");
-        String address = parsedResponse.read("$._embedded.attendees[0].address");
-        String city = parsedResponse.read("$._embedded.attendees[0].city");
-        String state = parsedResponse.read("$._embedded.attendees[0].state");
-        String zipCode = parsedResponse.read("$._embedded.attendees[0].zipCode");
-        String phoneNumber = parsedResponse.read("$._embedded.attendees[0].phoneNumber");
-        String emailAddress = parsedResponse.read("$._embedded.attendees[0].emailAddress");
-
-        assertThat(firstName, equalTo("Bob"));
-        assertThat(lastName, equalTo("Builder"));
-        assertThat(address, equalTo("1234 Fake St"));
-        assertThat(city, equalTo("Detroit"));
-        assertThat(state, equalTo("Michigan"));
-        assertThat(zipCode, equalTo("80202"));
-        assertThat(phoneNumber, equalTo("555-7890"));
-        assertThat(emailAddress, equalTo("bob@example.com"));
-    }
-
-    private ResponseEntity<String> postJSON(String attendeeJSON, String url) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-
-        HttpEntity<String> attendeeHttpEntity = new HttpEntity<>(attendeeJSON, headers);
-        return restTemplate.postForEntity(url, attendeeHttpEntity, String.class);
-    }
 }
 
