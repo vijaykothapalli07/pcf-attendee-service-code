@@ -1,10 +1,10 @@
 applications:
-- name: attendee-service
-  instances: 1
-  memory: 1024M
-  disk_quota: 1024M
+- name: attendee
+  path: target/attendee-1.0.jar
   random-route: true
-  stack: cflinuxfs2
-  path: target/attendee-service-0.0.1-SNAPSHOT.jar
+#  host: attendee-jl
+  memory: 768M
+  instances: 1
+  buildpack: java_buildpack
   services:
-    - attendee-mysql
+  - attendee-mysql
