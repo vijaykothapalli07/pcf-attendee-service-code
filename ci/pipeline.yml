@@ -3,15 +3,49 @@ resources:
 - name: attendee-service
   type: git
   source:
-    uri: https://github.com/pivotal-enablement/attendee-service
+    uri: https://github.com/vijaykothapalli07/pcf-attendee-service-code  #<---- REPLACE ME
     branch: master
 
+- name: deploy-attendee-service
+  type: cf
+  source:
+    api: https://api.system.cumuluslabs.io        #<---- REPLACE ME
+    username: {{cf-user}}
+    password: {{cf-password}}
+    organization: vkothapalli-PAL-Dec11    #<---- REPLACE ME
+    space: sandbox         #<---- REPLACE ME
+    skip_cert_check: false
+
 jobs:
-- name: package
+- name: test
   public: true
   plan:
   - get: attendee-service
+    trigger: true
+  - task: test
+    file: attendee-service/ci/tasks/test.yml
+
+- name: deploy
+  public: true
+  plan:
+  - get: attendee-service
+    trigger: true
+    passed: [test]
   - task: package
-    privileged: true
     file: attendee-service/ci/tasks/package.yml
+  - put: deploy-attendee-service
+    params:
+      manifest: attendee-service/manifest.yml
+      path: package-output/attendee-service.jar
+
+- name: smoke_test
+  public: true
+  plan:
+  - get: attendee-service
+    trigger: true
+    passed: [deploy]
+  - task: smoke_test
+    file: attendee-service/ci/tasks/smoke-test.yml
+    params:
+      ATTENDEE_SERVICE_URL: https://unarmored-electronarcosis.apps.cumuluslabs.io  #<---- REPLACE ME
 
